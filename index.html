@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown 双屏编辑器</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+      line-height: 1.6;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    header {
+      flex-shrink: 0;
+      margin-bottom: 12px;
+    }
+    
+    h1 {
+      color: #333;
+      margin: 0 0 4px 0;
+      font-size: 20px;
+    }
+    
+    .description {
+      color: #666;
+      font-size: 13px;
+      margin: 0;
+    }
+    
+    .editor-wrapper {
+      flex: 1;
+      display: flex;
+      gap: 12px;
+      min-height: 0;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    
+    .editor-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+    
+    .editor-pane:first-child {
+      border-right: 1px solid #e0e0e0;
+    }
+    
+    .pane-header {
+      padding: 10px 16px;
+      background: #fafafa;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 13px;
+      font-weight: 500;
+      color: #555;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    
+    .pane-header::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4caf50;
+    }
+    
+    .editor-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    /* Markdown 文本框样式 */
+    .editor-container textarea {
+      width: 100%;
+      height: 100%;
+      padding: 16px;
+      border: none;
+      outline: none;
+      font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.7;
+      resize: none;
+      background: #fff;
+      overflow-y: auto;
+    }
+    
+    /* ProseMirror 编辑器样式 */
+    .ProseMirror {
+      position: relative;
+      height: 100%;
+      padding: 16px;
+      outline: none;
+      overflow-y: auto;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      white-space: break-spaces;
+      -webkit-font-variant-ligatures: none;
+      font-variant-ligatures: none;
+      font-feature-settings: "liga" 0;
+    }
+    
+    .ProseMirror p {
+      margin: 0 0 1em 0;
+    }
+    
+    .ProseMirror h1, 
+    .ProseMirror h2, 
+    .ProseMirror h3, 
+    .ProseMirror h4 {
+      margin: 1.2em 0 0.5em 0;
+      line-height: 1.3;
+    }
+    
+    .ProseMirror h1 { font-size: 1.8em; }
+    .ProseMirror h2 { font-size: 1.5em; }
+    .ProseMirror h3 { font-size: 1.25em; }
+    
+    .ProseMirror ul, 
+    .ProseMirror ol {
+      padding-left: 2em;
+      margin: 0 0 1em 0;
+    }
+    
+    .ProseMirror blockquote {
+      border-left: 3px solid #ddd;
+      padding-left: 1em;
+      margin: 0 0 1em 0;
+      color: #666;
+    }
+    
+    .ProseMirror pre {
+      background: #f4f4f4;
+      padding: 1em;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    
+    .ProseMirror code {
+      background: #f4f4f4;
+      padding: 0.2em 0.4em;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    
+    .ProseMirror pre code {
+      background: none;
+      padding: 0;
+    }
+    
+    .ProseMirror a {
+      color: #0066cc;
+      text-decoration: none;
+    }
+    
+    .ProseMirror a:hover {
+      text-decoration: underline;
+    }
+    
+    .ProseMirror hr {
+      border: none;
+      border-top: 2px solid #ddd;
+      margin: 2em 0;
+    }
+    
+    .ProseMirror img {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    .ProseMirror table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1em 0;
+    }
+    
+    .ProseMirror td, 
+    .ProseMirror th {
+      border: 1px solid #ddd;
+      padding: 8px 12px;
+      text-align: left;
+    }
+    
+    .ProseMirror th {
+      background: #f5f5f5;
+    }
+    
+    /* ProseMirror 菜单样式 */
+    .ProseMirror-menubar {
+      border-bottom: 1px solid #e0e0e0;
+      padding: 5px 10px;
+      background: #fafafa;
+      flex-shrink: 0;
+    }
+    
+    .ProseMirror-menubar-wrapper {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    
+    .ProseMirror-menubar-wrapper > .ProseMirror {
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .ProseMirror-menubar-wrapper .ProseMirror {
+      padding-top: 10px;
+    }
+    
+    .ProseMirror-menuitem {
+      display: inline-block;
+      margin-right: 3px;
+    }
+    
+    .ProseMirror-menuseparator {
+      display: inline-block;
+      margin: 0 4px;
+      border-right: 1px solid #ddd;
+      height: 20px;
+      vertical-align: middle;
+    }
+    
+    .ProseMirror-icon {
+      display: inline-block;
+      padding: 4px 8px;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    
+    .ProseMirror-icon:hover {
+      background: #e0e0e0;
+    }
+    
+    .ProseMirror-icon svg {
+      fill: currentColor;
+      width: 16px;
+      height: 16px;
+      vertical-align: middle;
+    }
+    
+    .ProseMirror-menu-active {
+      background: #ddd;
+    }
+    
+    .ProseMirror-prompt {
+      position: absolute;
+      background: white;
+      padding: 15px;
+      border-radius: 6px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 100;
+    }
+    
+    .ProseMirror-prompt input[type="text"] {
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-right: 8px;
+      width: 250px;
+    }
+    
+    .ProseMirror-prompt-buttons {
+      margin-top: 10px;
+      text-align: right;
+    }
+    
+    .ProseMirror-prompt-buttons button {
+      padding: 6px 16px;
+      margin-left: 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .ProseMirror-prompt-buttons button[type="submit"] {
+      background: #0066cc;
+      color: white;
+    }
+    
+    .ProseMirror-prompt-buttons button[type="button"] {
+      background: #e0e0e0;
+      color: #333;
+    }
+    
+    /* 选中样式 */
+    .ProseMirror-selectednode {
+      outline: 2px solid #8cf;
+    }
+    
+    .ProseMirror ::selection {
+      background: #b3d4fc;
+    }
+    
+    /* GapCursor */
+    .ProseMirror-gapcursor {
+      display: none;
+      pointer-events: none;
+      position: absolute;
+    }
+    
+    .ProseMirror-gapcursor:after {
+      content: "";
+      display: block;
+      position: absolute;
+      top: -2px;
+      width: 20px;
+      border-top: 1px solid black;
+      animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
+    }
+    
+    @keyframes ProseMirror-cursor-blink {
+      to { visibility: hidden; }
+    }
+    
+    .ProseMirror-focused .ProseMirror-gapcursor {
+      display: block;
+    }
+    
+    /* Drop cursor */
+    .ProseMirror-dropcursor {
+      background: #666;
+      width: 2px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📝 Markdown 双屏编辑器</h1>
+    <p class="description">左侧编辑 Markdown 源码，右侧实时预览。两侧内容会自动同步。</p>
+  </header>
+  
+  <div class="editor-wrapper">
+    <!-- 左侧：Markdown 源码 -->
+    <div class="editor-pane">
+      <div class="pane-header">Markdown 源码</div>
+      <div id="markdown-editor" class="editor-container"></div>
+    </div>
+    
+    <!-- 右侧：可视编辑 -->
+    <div class="editor-pane">
+      <div class="pane-header">可视编辑</div>
+      <div id="wysiwyg-editor" class="editor-container"></div>
+    </div>
+  </div>
+
+  <!-- Import Map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "prosemirror-view": "./node_modules/prosemirror-view/dist/index.js",
+      "prosemirror-state": "./node_modules/prosemirror-state/dist/index.js",
+      "prosemirror-markdown": "./node_modules/prosemirror-markdown/dist/index.js",
+      "prosemirror-example-setup": "./node_modules/prosemirror-example-setup/dist/index.js",
+      "prosemirror-model": "./node_modules/prosemirror-model/dist/index.js",
+      "prosemirror-transform": "./node_modules/prosemirror-transform/dist/index.js",
+      "prosemirror-commands": "./node_modules/prosemirror-commands/dist/index.js",
+      "prosemirror-keymap": "./node_modules/prosemirror-keymap/dist/index.js",
+      "prosemirror-schema-list": "./node_modules/prosemirror-schema-list/dist/index.js",
+      "prosemirror-history": "./node_modules/prosemirror-history/dist/index.js",
+      "prosemirror-dropcursor": "./node_modules/prosemirror-dropcursor/dist/index.js",
+      "prosemirror-gapcursor": "./node_modules/prosemirror-gapcursor/dist/index.js",
+      "prosemirror-menu": "./node_modules/prosemirror-menu/dist/index.js",
+      "prosemirror-inputrules": "./node_modules/prosemirror-inputrules/dist/index.js",
+      "crelt": "./node_modules/crelt/index.js",
+      "orderedmap": "./node_modules/orderedmap/dist/index.js",
+      "rope-sequence": "./node_modules/rope-sequence/dist/index.js",
+      "w3c-keyname": "./node_modules/w3c-keyname/index.js",
+      "markdown-it": "./node_modules/markdown-it/index.mjs",
+      "entities": "./node_modules/entities/lib/esm/index.js",
+      "linkify-it": "./node_modules/linkify-it/index.mjs",
+      "mdurl": "./node_modules/mdurl/index.mjs",
+      "punycode.js": "./node_modules/punycode.js/punycode.es6.js",
+      "uc.micro": "./node_modules/uc.micro/index.mjs"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import { EditorView } from 'prosemirror-view';
+    import { EditorState } from 'prosemirror-state';
+    import { schema, defaultMarkdownParser, defaultMarkdownSerializer } from 'prosemirror-markdown';
+    import { exampleSetup } from 'prosemirror-example-setup';
+
+    // 默认内容
+    const defaultContent = `## 欢迎使用 Markdown 双屏编辑器
+
+左侧是 **Markdown 源码**，右侧是 **实时预览**。
+
+### 特性
+
+- 两侧内容实时同步
+- 支持常用 Markdown 语法
+- 可视化工具栏操作
+
+### 示例
+
+**粗体**、*斜体*、\`代码\`
+
+\`\`\`javascript
+function hello() {
+  console.log("Hello World!");
+}
+\`\`\`
+
+> 引用块
+
+| 功能 | 状态 |
+|------|------|
+| 实时同步 | ✅ |
+| 双屏编辑 | ✅ |
+
+---
+
+开始编辑吧！`;
+
+    // Markdown 视图
+    class MarkdownView {
+      constructor(target, content, onChange) {
+        this.textarea = document.createElement("textarea");
+        this.textarea.value = content;
+        this.textarea.spellcheck = false;
+        target.appendChild(this.textarea);
+        
+        this.onChange = onChange;
+        this.debounceTimer = null;
+        
+        this.textarea.addEventListener('input', () => {
+          clearTimeout(this.debounceTimer);
+          this.debounceTimer = setTimeout(() => {
+            this.onChange(this.textarea.value);
+          }, 300);
+        });
+      }
+
+      get content() {
+        return this.textarea.value;
+      }
+
+      setContent(content) {
+        if (this.textarea.value !== content) {
+          const start = this.textarea.selectionStart;
+          const end = this.textarea.selectionEnd;
+          this.textarea.value = content;
+          this.textarea.setSelectionRange(start, end);
+        }
+      }
+
+      focus() {
+        this.textarea.focus();
+      }
+
+      destroy() {
+        this.textarea.remove();
+      }
+    }
+
+    // ProseMirror 视图
+    class ProseMirrorView {
+      constructor(target, content, onChange) {
+        this.onChange = onChange;
+        this.debounceTimer = null;
+        
+        let doc;
+        try {
+          doc = defaultMarkdownParser.parse(content);
+        } catch (e) {
+          console.warn('Markdown 解析失败:', e);
+        }
+        if (!doc) {
+          doc = schema.node("doc", null, [schema.node("paragraph")]);
+        }
+        
+        this.view = new EditorView(target, {
+          state: EditorState.create({
+            doc: doc,
+            plugins: exampleSetup({ schema, menuBar: true })
+          }),
+          dispatchTransaction: (tr) => {
+            const newState = this.view.state.apply(tr);
+            this.view.updateState(newState);
+            
+            if (tr.docChanged) {
+              clearTimeout(this.debounceTimer);
+              this.debounceTimer = setTimeout(() => {
+                this.onChange(this.content);
+              }, 300);
+            }
+          }
+        });
+      }
+
+      get content() {
+        return defaultMarkdownSerializer.serialize(this.view.state.doc);
+      }
+
+      setContent(content) {
+        const currentContent = this.content;
+        if (currentContent !== content) {
+          let newDoc;
+          try {
+            newDoc = defaultMarkdownParser.parse(content);
+          } catch (e) {
+            console.warn('Markdown 解析失败:', e);
+          }
+          if (newDoc) {
+            const tr = this.view.state.tr.replaceWith(0, this.view.state.doc.content.size, newDoc.content);
+            this.view.dispatch(tr);
+          }
+        }
+      }
+
+      focus() {
+        this.view.focus();
+      }
+
+      destroy() {
+        this.view.destroy();
+      }
+    }
+
+    // 初始化
+    const mdTarget = document.querySelector("#markdown-editor");
+    const pmTarget = document.querySelector("#wysiwyg-editor");
+    
+    let isSyncing = false;
+    
+    const mdView = new MarkdownView(mdTarget, defaultContent, (content) => {
+      if (!isSyncing) {
+        isSyncing = true;
+        pmView.setContent(content);
+        isSyncing = false;
+      }
+    });
+    
+    const pmView = new ProseMirrorView(pmTarget, defaultContent, (content) => {
+      if (!isSyncing) {
+        isSyncing = true;
+        mdView.setContent(content);
+        isSyncing = false;
+      }
+    });
+  </script>
+</body>
+</html>

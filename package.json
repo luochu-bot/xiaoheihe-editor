@@ -1,0 +1,15 @@
+{
+  "name": "markdown-editor",
+  "version": "1.0.0",
+  "description": "Markdown editor with ProseMirror",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve ."
+  },
+  "dependencies": {
+    "prosemirror-example-setup": "^1.2.1",
+    "prosemirror-markdown": "^1.9.1",
+    "prosemirror-state": "^1.4.1",
+    "prosemirror-view": "^1.23.6"
+  }
+}
