@@ -22,6 +22,29 @@
       overflow: hidden;
     }
 
+    /* Column Toggles */
+    .column-toggles {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+
+    .column-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .column-toggle input {
+      margin: 0;
+      cursor: pointer;
+    }
+
     header {
       flex-shrink: 0;
       margin-bottom: 12px;
@@ -199,10 +222,15 @@
       flex-direction: column;
       min-width: 0;
       overflow: hidden;
+      border-right: 1px solid #e0e0e0;
     }
 
-    .editor-pane:first-child {
-      border-right: 1px solid #e0e0e0;
+    .editor-pane:last-child {
+      border-right: none;
+    }
+
+    .editor-pane[hidden] {
+      display: none !important;
     }
 
     .pane-header {
@@ -653,12 +681,27 @@
 </head>
 
 <body>
-  <header>
-    <div>
+  <header style="display: flex; align-items: center; justify-content: space-between;">
+    <div style="flex: 1;">
       <h1>📝 Markdown 双屏编辑器</h1>
       <p class="description">左侧编辑 Markdown 源码，右侧实时预览。两侧内容会自动同步。</p>
     </div>
-    <button class="help-btn" id="helpBtn">语法帮助</button>
+
+    <div class="column-toggles" style="flex: 0 0 auto; margin: 0 24px;">
+      <label class="column-toggle">
+        <input type="checkbox" id="toggle-source" checked> MD源码
+      </label>
+      <label class="column-toggle">
+        <input type="checkbox" id="toggle-preview" checked> 可视编辑
+      </label>
+      <label class="column-toggle">
+        <input type="checkbox" id="toggle-export" checked> 导出预览
+      </label>
+    </div>
+
+    <div style="flex: 1; display: flex; justify-content: flex-end;">
+      <button class="help-btn" id="helpBtn">语法帮助</button>
+    </div>
   </header>
 
   <!-- 语法帮助弹窗 -->
@@ -726,26 +769,22 @@
   </div>
 
   <div class="editor-wrapper">
-    <!-- 左侧：Markdown 源码 -->
-    <div class="editor-pane">
+    <!-- 1. Markdown 源码 -->
+    <div class="editor-pane" id="pane-source">
       <div class="pane-header">Markdown 源码</div>
       <div id="markdown-editor" class="editor-container"></div>
     </div>
 
-    <!-- 右侧：带 Tab 切换 -->
-    <div class="editor-pane">
-      <div class="pane-header">
-        <div class="tabs">
-          <div class="tab active" data-tab="preview">可视编辑</div>
-          <div class="tab" data-tab="export">导出预览</div>
-        </div>
-      </div>
+    <!-- 2. 可视编辑 -->
+    <div class="editor-pane" id="pane-preview">
+      <div class="pane-header">可视编辑</div>
+      <div id="wysiwyg-editor" class="editor-container"></div>
+    </div>
 
-      <!-- 可视编辑 Tab -->
-      <div id="wysiwyg-editor" class="editor-container tab-content active" data-tab="preview"></div>
-
-      <!-- 导出预览 Tab -->
-      <div id="export-tab-content" class="tab-content" style="background: #fff;" data-tab="export">
+    <!-- 3. 导出预览 -->
+    <div class="editor-pane" id="pane-export">
+      <div class="pane-header">导出预览</div>
+      <div class="editor-container" style="display: flex; flex-direction: column;">
         <div id="export-editor" class="export-editor-container"></div>
         <div class="export-footer">
           <div class="export-actions">
@@ -1212,30 +1251,65 @@ function hello() {
       return exportEditorView;
     }
 
-    // Tab 切换逻辑
-    const tabs = document.querySelectorAll('.tab');
-    const tabContents = document.querySelectorAll('.tab-content');
+    // Column toggle logic
+    const toggles = {
+      source: document.getElementById('toggle-source'),
+      preview: document.getElementById('toggle-preview'),
+      export: document.getElementById('toggle-export')
+    };
 
-    tabs.forEach(tab => {
-      tab.addEventListener('click', async () => {
-        const targetId = tab.dataset.tab;
+    const panes = {
+      source: document.getElementById('pane-source'),
+      preview: document.getElementById('pane-preview'),
+      export: document.getElementById('pane-export')
+    };
 
-        // 更新 Tab 状态
-        tabs.forEach(t => t.classList.toggle('active', t === tab));
+    // Initial Sync function
+    async function updateExportContent() {
+      if (!panes.export.hidden) {
+        const content = mdView.content;
+        const processedContent = await processMarkdownForExport(content);
+        createExportEditor(exportEditorTarget, processedContent);
+      }
+    }
 
-        // 更新内容显示
-        tabContents.forEach(content => {
-          content.classList.toggle('active', content.dataset.tab === targetId);
-        });
+    // Bind toggles
+    Object.keys(toggles).forEach(key => {
+      toggles[key].addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        panes[key].hidden = !isChecked;
 
-        // 如果切换到导出预览，生成内容
-        if (targetId === 'export') {
-          const currentContent = mdView.content;
-          const processedContent = await processMarkdownForExport(currentContent);
-          createExportEditor(exportEditorTarget, processedContent);
+        // Specific logic when showing export pane
+        if (key === 'export' && isChecked) {
+          updateExportContent();
         }
       });
     });
+
+    // 初始化
+    const mdTarget = document.querySelector("#markdown-editor");
+    const pmTarget = document.querySelector("#wysiwyg-editor");
+
+    const mdView = new MarkdownView(mdTarget, defaultContent, async (content) => {
+      // Sync to visual editor if visible (or always if we want to keep state ready)
+      // Visual Editor is cheap to update, keeping it synced always is safer for consistency
+      pmView.setContent(content);
+
+      // Sync to export preview if visible
+      if (!panes.export.hidden) {
+        updateExportContent();
+      }
+    });
+
+    // Trigger initial export content generation
+    if (!panes.export.hidden) {
+      // Wait for next tick to ensure everything is ready
+      setTimeout(() => {
+        updateExportContent();
+      }, 0);
+    }
+
+    const pmView = new ProseMirrorView(pmTarget, defaultContent);
 
     // 复制到剪贴板功能
     const exportCopyBtn = document.getElementById('exportCopyBtn');
@@ -1383,24 +1457,6 @@ function hello() {
         }
       }
     });
-
-    // 初始化
-    const mdTarget = document.querySelector("#markdown-editor");
-    const pmTarget = document.querySelector("#wysiwyg-editor");
-
-    const mdView = new MarkdownView(mdTarget, defaultContent, async (content) => {
-      // Markdown 编辑器修改时，同步到可视编辑器
-      pmView.setContent(content);
-
-      // 如果当前是导出预览 Tab，也同步更新导出内容
-      const activeTab = document.querySelector('.tab.active');
-      if (activeTab && activeTab.dataset.tab === 'export') {
-        const processedContent = await processMarkdownForExport(content);
-        createExportEditor(exportEditorTarget, processedContent);
-      }
-    });
-
-    const pmView = new ProseMirrorView(pmTarget, defaultContent);
   </script>
 </body>
 
