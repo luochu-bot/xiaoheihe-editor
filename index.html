@@ -486,6 +486,102 @@
       width: 2px;
       pointer-events: none;
     }
+    
+    /* 导出悬浮按钮 */
+    .export-fab {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,102,204,0.3);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 100;
+      transition: all 0.2s;
+    }
+    
+    .export-fab:hover {
+      background: #0052a3;
+      box-shadow: 0 6px 16px rgba(0,102,204,0.4);
+    }
+    
+    /* 导出预览弹窗遮罩 - 全屏遮罩 */
+    .export-modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 200;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .export-modal-overlay.active {
+      display: flex;
+    }
+    
+    /* 导出预视弹窗 */
+    .export-modal {
+      width: 80%;
+      max-width: 800px;
+      max-height: 80vh;
+      margin: auto;
+    }
+    
+    .export-modal .modal-body {
+      max-height: calc(80vh - 50px);
+      overflow-y: auto;
+    }
+    
+    /* 导出编辑器容器 */
+    .export-editor-container {
+      height: 60vh;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      overflow: hidden;
+      background: white;
+    }
+    
+    .export-editor-container .ProseMirror {
+      height: 100%;
+      padding: 16px;
+      outline: none;
+      overflow-y: auto;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    
+    /* 图片占位符样式 */
+    .image-placeholder-node {
+      background: #f5f5f5;
+      border: 2px dashed #ccc;
+      border-radius: 4px;
+      padding: 16px;
+      margin: 8px 0;
+      text-align: center;
+      color: #999;
+      font-size: 13px;
+    }
+    
+    .image-placeholder-node.code-block {
+      background: #f4f4f4;
+      border-style: solid;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
@@ -537,9 +633,45 @@
             <code class="syntax-code">**文字** + 空格</code>
           </li>
         </ul>
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+          <div style="font-size: 12px; color: #999; margin-bottom: 8px;">导出转换规则</div>
+          <ul class="syntax-list">
+            <li class="syntax-item">
+              <span class="syntax-icon">`</span>
+              <span class="syntax-name">行内代码</span>
+              <code class="syntax-code">`code` → ****粗体****</code>
+            </li>
+            <li class="syntax-item">
+              <span class="syntax-icon">▦</span>
+              <span class="syntax-name">代码块/表格</span>
+              <code class="syntax-code">转为图片</code>
+            </li>
+            <li class="syntax-item">
+              <span class="syntax-icon">↗</span>
+              <span class="syntax-name">超链接</span>
+              <code class="syntax-code">添加 title</code>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
+
+  <!-- 导出预览弹窗 -->
+  <div class="export-modal-overlay" id="exportModalOverlay">
+    <div class="modal export-modal">
+      <div class="modal-header">
+        <span class="modal-title">导出预览</span>
+        <button class="modal-close" id="exportModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="export-editor" class="export-editor-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导出按钮 -->
+  <button class="export-fab" id="exportBtn">导出预览</button>
   
   <div class="editor-wrapper">
     <!-- 左侧：Markdown 源码 -->
@@ -741,6 +873,242 @@ function hello() {
     
     modalClose.addEventListener('click', () => {
       modalOverlay.classList.remove('active');
+    });
+    
+    // 导出预览
+    const exportBtn = document.getElementById('exportBtn');
+    const exportModalOverlay = document.getElementById('exportModalOverlay');
+    const exportModalClose = document.getElementById('exportModalClose');
+    const exportEditorTarget = document.getElementById('export-editor');
+    let exportEditorView = null;
+    
+    // 将代码块生成图片
+    function generateCodeBlockImage(codeContent, language = '') {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // 设置画布尺寸
+      const padding = 20;
+      const lineHeight = 24;
+      const maxWidth = 560;
+      const lines = codeContent.split('\n');
+      const displayLines = lines.slice(0, 20); // 最多显示20行
+      const height = padding * 2 + displayLines.length * lineHeight + (language ? 30 : 0);
+      
+      canvas.width = maxWidth;
+      canvas.height = height;
+      
+      // 背景
+      ctx.fillStyle = '#f5f5f5';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // 边框
+      ctx.strokeStyle = '#e0e0e0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      
+      // 语言标签
+      if (language) {
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillRect(0, 0, 80, 24);
+        ctx.fillStyle = '#666';
+        ctx.font = '12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(language, 40, 17);
+        ctx.textAlign = 'left';
+      }
+      
+      // 代码内容
+      ctx.fillStyle = '#333';
+      ctx.font = '14px "SF Mono", Monaco, Consolas, monospace';
+      const startY = padding + (language ? 30 : 0);
+      
+      displayLines.forEach((line, index) => {
+        const displayLine = line.length > 60 ? line.substring(0, 57) + '...' : line;
+        ctx.fillText(displayLine, padding, startY + index * lineHeight);
+      });
+      
+      if (lines.length > 20) {
+        ctx.fillStyle = '#999';
+        ctx.fillText(`... 还有 ${lines.length - 20} 行`, padding, startY + displayLines.length * lineHeight);
+      }
+      
+      return canvas.toDataURL('image/png');
+    }
+    
+    // 将表格生成图片
+    function generateTableImage(tableData) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      const padding = 12;
+      const cellPadding = 10;
+      const rowHeight = 36;
+      const maxWidth = 560;
+      
+      // 计算列宽
+      const colCount = tableData[0].length;
+      const colWidth = Math.floor((maxWidth - padding * 2) / colCount);
+      
+      const height = padding * 2 + tableData.length * rowHeight;
+      canvas.width = maxWidth;
+      canvas.height = height;
+      
+      // 背景
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // 绘制表格
+      tableData.forEach((row, rowIndex) => {
+        const y = padding + rowIndex * rowHeight;
+        
+        // 表头背景
+        if (rowIndex === 0) {
+          ctx.fillStyle = '#f5f5f5';
+          ctx.fillRect(padding, y, colCount * colWidth, rowHeight);
+        }
+        
+        // 行分隔线
+        ctx.strokeStyle = '#e0e0e0';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding, y + rowHeight);
+        ctx.lineTo(padding + colCount * colWidth, y + rowHeight);
+        ctx.stroke();
+        
+        // 列分隔线
+        row.forEach((cell, colIndex) => {
+          const x = padding + colIndex * colWidth;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + rowHeight);
+          ctx.stroke();
+          
+          // 单元格内容
+          ctx.fillStyle = '#333';
+          ctx.font = '13px -apple-system, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          const displayCell = cell.length > 15 ? cell.substring(0, 12) + '...' : cell;
+          ctx.fillText(displayCell, x + cellPadding, y + rowHeight / 2);
+        });
+        
+        // 右边框
+        ctx.beginPath();
+        ctx.moveTo(padding + colCount * colWidth, y);
+        ctx.lineTo(padding + colCount * colWidth, y + rowHeight);
+        ctx.stroke();
+      });
+      
+      // 顶部和底部边框
+      ctx.beginPath();
+      ctx.moveTo(padding, padding);
+      ctx.lineTo(padding + colCount * colWidth, padding);
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.moveTo(padding, padding + tableData.length * rowHeight);
+      ctx.lineTo(padding + colCount * colWidth, padding + tableData.length * rowHeight);
+      ctx.stroke();
+      
+      return canvas.toDataURL('image/png');
+    }
+    
+    // 解析表格
+    function parseTable(markdown) {
+      const lines = markdown.trim().split('\n');
+      const tableData = [];
+      
+      lines.forEach((line, index) => {
+        if (index === 1 && line.includes('|-')) return; // 跳过分隔行
+        const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
+        if (cells.length > 0) {
+          tableData.push(cells);
+        }
+      });
+      
+      return tableData;
+    }
+    
+    // 处理 Markdown 内容，生成图片并返回新的 Markdown
+    async function processMarkdownForExport(markdown) {
+      let processed = markdown;
+      
+      // 1. 处理代码块
+      const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+      let match;
+      while ((match = codeBlockRegex.exec(markdown)) !== null) {
+        const language = match[1] || '';
+        const code = match[2].trim();
+        const imageUrl = generateCodeBlockImage(code, language);
+        processed = processed.replace(match[0], `\n![代码块](${imageUrl})\n`);
+      }
+      
+      // 2. 处理表格
+      const tableRegex = /\|[^\n]+\|[^\n]*(?:\n\|[-:]+[-|:]*\|[^\n]*)?(?:\n\|[^\n]+\|[^\n]*)*/g;
+      const tables = markdown.match(tableRegex) || [];
+      tables.forEach(tableMarkdown => {
+        const tableData = parseTable(tableMarkdown);
+        if (tableData.length > 0) {
+          const imageUrl = generateTableImage(tableData);
+          processed = processed.replace(tableMarkdown, `\n![表格](${imageUrl})\n`);
+        }
+      });
+      
+      // 3. 将行内代码 `code` 转为 **code** 粗体
+      processed = processed.replace(/`([^`]+)`/g, '**$1**');
+      
+      // 4. 将超链接 [text](url) 转为 [text](url "text")
+      processed = processed.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, (match, text, url) => {
+        return `[${text}](${url} "${text}")`;
+      });
+      
+      return processed;
+    }
+    
+    // 创建导出编辑器视图（只读）
+    function createExportEditor(target, content) {
+      // 如果已存在，先销毁
+      if (exportEditorView) {
+        exportEditorView.destroy();
+      }
+      
+      // 清空目标容器
+      target.innerHTML = '';
+      
+      // 解析 Markdown 内容
+      let doc;
+      try {
+        doc = defaultMarkdownParser.parse(content);
+      } catch (e) {
+        console.warn('导出预览解析失败:', e);
+        doc = schema.node("doc", null, [schema.node("paragraph")]);
+      }
+      
+      // 创建只读编辑器
+      exportEditorView = new EditorView(target, {
+        state: EditorState.create({
+          doc: doc,
+          plugins: exampleSetup({ schema, menuBar: false })
+        }),
+        editable: () => false,
+        dispatchTransaction: () => {
+          // 只读，不处理交易
+        }
+      });
+      
+      return exportEditorView;
+    }
+    
+    exportBtn.addEventListener('click', async () => {
+      const currentContent = mdView.content;
+      const processedContent = await processMarkdownForExport(currentContent);
+      createExportEditor(exportEditorTarget, processedContent);
+      exportModalOverlay.classList.add('active');
+    });
+    
+    exportModalClose.addEventListener('click', () => {
+      exportModalOverlay.classList.remove('active');
     });
     
     // 初始化
