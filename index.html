@@ -1119,13 +1119,16 @@ async function processMarkdownForExport(markdown) {
       return canvas.toDataURL('image/png');
     }
 
-    // Helper: Draw text with bold support
-    function drawRichText(ctx, text, x, y, maxWidth) {
+    // Helper: Parse rich text into wrapped lines
+    function getWrappedLines(ctx, text, maxWidth) {
       // Split by markdown syntax
       const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|__[^_]+__)/g);
-      let currentX = x;
       const baseFont = '13px -apple-system, sans-serif';
       const boldFont = 'bold 13px -apple-system, sans-serif';
+
+      let lines = [];
+      let currentLine = []; // Array of {text, font}
+      let currentLineWidth = 0;
 
       parts.forEach(part => {
         let isBold = false;
@@ -1141,11 +1144,33 @@ async function processMarkdownForExport(markdown) {
           isBold = true; content = part.slice(2, -2);
         }
 
-        ctx.font = isBold ? boldFont : baseFont;
-        ctx.fillStyle = '#333';
-        ctx.fillText(content, currentX, y);
-        currentX += ctx.measureText(content).width;
+        const font = isBold ? boldFont : baseFont;
+        ctx.font = font;
+
+        // Character-level wrapping for robustness with CJK
+        for (let i = 0; i < content.length; i++) {
+          const char = content[i];
+          const charWidth = ctx.measureText(char).width;
+
+          if (currentLineWidth + charWidth > maxWidth) {
+            lines.push(currentLine);
+            currentLine = [{ text: char, font: font }];
+            currentLineWidth = charWidth;
+          } else {
+            if (currentLine.length > 0 && currentLine[currentLine.length - 1].font === font) {
+              currentLine[currentLine.length - 1].text += char;
+            } else {
+              currentLine.push({ text: char, font: font });
+            }
+            currentLineWidth += charWidth;
+          }
+        }
       });
+
+      if (currentLine.length > 0) lines.push(currentLine);
+      if (lines.length === 0) lines.push([]);
+
+      return lines;
     }
 
     // 将表格生成图片
@@ -1155,24 +1180,54 @@ async function processMarkdownForExport(markdown) {
 
       const padding = 12;
       const cellPadding = 10;
-      const rowHeight = 36;
+      const baseRowHeight = 36;
+      const lineHeight = 20;
       const maxWidth = 560;
 
       // 计算列宽
       const colCount = tableData[0].length;
       const colWidth = Math.floor((maxWidth - padding * 2) / colCount);
+      const cellContentWidth = colWidth - cellPadding * 2;
 
-      const height = padding * 2 + tableData.length * rowHeight;
+      // 1. Calculate height for each row
+      const processedRows = [];
+      let totalHeight = padding * 2;
+
+      tableData.forEach((row, rowIndex) => {
+        let maxLinesInRow = 1;
+        const rowCells = [];
+
+        row.forEach(cellText => {
+          const lines = getWrappedLines(ctx, cellText, cellContentWidth);
+          rowCells.push(lines);
+          if (lines.length > maxLinesInRow) {
+            maxLinesInRow = lines.length;
+          }
+        });
+
+        const rowContentHeight = maxLinesInRow * lineHeight;
+        const rowTotalHeight = Math.max(baseRowHeight, rowContentHeight + 16); // padding top/bottom
+
+        processedRows.push({
+          height: rowTotalHeight,
+          cells: rowCells
+        });
+
+        totalHeight += rowTotalHeight;
+      });
+
       canvas.width = maxWidth;
-      canvas.height = height;
+      canvas.height = totalHeight;
 
       // 背景
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // 绘制表格
-      tableData.forEach((row, rowIndex) => {
-        const y = padding + rowIndex * rowHeight;
+      let currentY = padding;
+
+      processedRows.forEach((rowInfo, rowIndex) => {
+        const rowHeight = rowInfo.height;
+        const y = currentY;
 
         // 表头背景
         if (rowIndex === 0) {
@@ -1188,10 +1243,14 @@ async function processMarkdownForExport(markdown) {
         ctx.lineTo(padding + colCount * colWidth, y + rowHeight);
         ctx.stroke();
 
-        // 列分隔线
-        row.forEach((cell, colIndex) => {
+        // 列分隔线和内容
+        rowInfo.cells.forEach((lines, colIndex) => {
           const x = padding + colIndex * colWidth;
+
+          // Draw grid line (except for the very first left border which is handled by loop logic or outer border)
+          // To be consistent with previous look:
           if (colIndex < colCount) {
+            ctx.strokeStyle = '#e0e0e0';
             ctx.beginPath();
             ctx.moveTo(x, y);
             ctx.lineTo(x, y + rowHeight);
@@ -1202,8 +1261,19 @@ async function processMarkdownForExport(markdown) {
           ctx.fillStyle = '#333';
           ctx.textBaseline = 'middle';
 
-          // Use Rich Text helper
-          drawRichText(ctx, cell, x + cellPadding, y + rowHeight / 2, colWidth - cellPadding * 2);
+          const textBlockHeight = lines.length * lineHeight;
+          const startY = y + (rowHeight - textBlockHeight) / 2 + lineHeight / 2;
+
+          lines.forEach((line, lineIndex) => {
+            const lineY = startY + lineIndex * lineHeight;
+            let currentX = x + cellPadding;
+
+            line.forEach(segment => {
+              ctx.font = segment.font;
+              ctx.fillText(segment.text, currentX, lineY);
+              currentX += ctx.measureText(segment.text).width;
+            });
+          });
         });
 
         // 右边框
@@ -1211,6 +1281,8 @@ async function processMarkdownForExport(markdown) {
         ctx.moveTo(padding + colCount * colWidth, y);
         ctx.lineTo(padding + colCount * colWidth, y + rowHeight);
         ctx.stroke();
+
+        currentY += rowHeight;
       });
 
       // 顶部边框
