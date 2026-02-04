@@ -224,6 +224,96 @@
       border-radius: 4px;
     }
 
+    /* Status Bar */
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      background: #fafafa;
+      border-top: 1px solid #e0e0e0;
+      font-size: 13px;
+      color: #444;
+      height: 32px;
+      flex-shrink: 0;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .save-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #999;
+    }
+
+    .save-status.active {
+      color: #4caf50;
+    }
+
+    /* Action Buttons in Header */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .action-btn {
+      padding: 8px 16px;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #555;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      background: #f5f5f5;
+      border-color: #ccc;
+    }
+
+    .action-btn.danger:hover {
+      color: #f44336;
+      border-color: #f44336;
+      background: #fff8f8;
+    }
+
+    .action-btn.active {
+      background: #e6f0ff;
+      border-color: #0066cc;
+      color: #0066cc;
+    }
+
+    /* Mobile Mode Simulation - Only targets the Export Pane */
+    #pane-export.mobile-mode {
+      background: #f0f2f5;
+    }
+
+    #pane-export.mobile-mode .editor-container {
+      max-width: 375px;
+      margin: 0 auto;
+      background: white;
+      border-left: 1px solid #ddd;
+      border-right: 1px solid #ddd;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
+    }
+
+    #pane-export.mobile-mode .export-footer {
+      max-width: 375px;
+      margin: 0 auto;
+      background: #fafafa;
+    }
+
     .editor-wrapper {
       flex: 1;
       display: flex;
@@ -253,19 +343,26 @@
     }
 
     .pane-header {
-      padding: 10px 16px;
+      padding: 0 16px;
       background: #fafafa;
       border-bottom: 1px solid #e0e0e0;
-      font-size: 13px;
-      font-weight: 500;
-      color: #555;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
+      height: 48px;
       flex-shrink: 0;
     }
 
-    .pane-header::before {
+    .pane-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pane-title::before {
       content: "";
       display: inline-block;
       width: 8px;
@@ -840,19 +937,30 @@
   <div class="editor-wrapper">
     <!-- 1. Markdown 源码 -->
     <div class="editor-pane" id="pane-source">
-      <div class="pane-header">源码编辑</div>
+      <div class="pane-header">
+        <div class="pane-title">源码编辑</div>
+        <div style="display: flex; gap: 8px;">
+          <button class="action-btn" id="restoreBtn" title="恢复为默认示例内容">🔄 恢复示例</button>
+          <button class="action-btn danger" id="clearBtn" title="清空全部源码内容">🗑️ 清空内容</button>
+        </div>
+      </div>
       <div id="markdown-editor" class="editor-container"></div>
     </div>
 
     <!-- 2. 实时预览 -->
     <div class="editor-pane" id="pane-preview">
-      <div class="pane-header">实时预览</div>
+      <div class="pane-header">
+        <div class="pane-title">实时预览</div>
+      </div>
       <div id="wysiwyg-editor" class="editor-container"></div>
     </div>
 
     <!-- 3. 导出转换 -->
     <div class="editor-pane" id="pane-export">
-      <div class="pane-header">导出转换</div>
+      <div class="pane-header">
+        <div class="pane-title">导出转换</div>
+        <button class="action-btn" id="mobileViewBtn" title="预览在手机上的排版效果">📱 模拟手机</button>
+      </div>
       <div class="editor-container" style="display: flex; flex-direction: column;">
         <div id="export-editor" class="export-editor-container"></div>
         <div class="export-footer">
@@ -869,6 +977,21 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 状态栏 -->
+  <div class="status-bar">
+    <div class="status-item">
+      <span id="wordCountDisplay">字符统计: 0</span>
+      <span style="color: #ddd;">|</span>
+      <span id="lineCountDisplay">行数: 0</span>
+    </div>
+    <div class="status-item">
+      <div id="saveStatus" class="save-status">
+        <span class="save-icon">☁️</span>
+        <span id="saveStatusText">已自动保存</span>
       </div>
     </div>
   </div>
@@ -1086,7 +1209,8 @@ function generateCodeBlockImage(code, language) {
     // 将代码块生成图片
     // Helper for Code Highlighting
     function drawHighlightedCode(ctx, text, x, y) {
-      const tokenRegex = /(\/\/.*$)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)|(\b(?:function|return|if|else|for|while|const|let|var|async|await|import|export|class|new|this|try|catch|true|false|null|undefined|void|typeof|instanceof)\b)|(\b\d+\b)/;
+      // Expanded keyword list for C++, Python, JS, etc.
+      const tokenRegex = /(\/\/.*$|#.*$)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)|(\b(?:function|return|if|else|for|while|const|let|var|async|await|import|export|class|new|this|try|catch|true|false|null|undefined|void|typeof|instanceof|public|private|protected|static|virtual|override|int|float|double|char|string|bool|list|dict|set|def|elif|lambda|none|using|namespace|include|template)\b)|(\b\d+\b)/;
 
       let cursorX = x;
       let remaining = text;
@@ -1108,6 +1232,8 @@ function generateCodeBlockImage(code, language) {
         }
 
         const token = match[0];
+        const tokenIndex = match.index;
+
         if (match[1]) ctx.fillStyle = '#a0a1a7'; // Comment
         else if (match[2]) ctx.fillStyle = '#50a14f'; // String
         else if (match[3]) ctx.fillStyle = '#a626a4'; // Keyword
@@ -1529,18 +1655,94 @@ function generateCodeBlockImage(code, language) {
     const mdTarget = document.querySelector("#markdown-editor");
     const pmTarget = document.querySelector("#wysiwyg-editor");
 
-    const mdView = new MarkdownView(mdTarget, defaultContent, async (content) => {
-      // Sync to visual editor if visible (or always if we want to keep state ready)
-      // Visual Editor is cheap to update, keeping it synced always is safer for consistency
-      pmView.setContent(content);
+    // 初始化编辑器内容
+    const savedContent = localStorage.getItem('xiaoheihe_editor_content');
+    const initialContent = savedContent || defaultContent;
 
-      // Sync to export preview if visible
+    const mdView = new MarkdownView(mdTarget, initialContent, async (content) => {
+      // 实时同步
+      pmView.setContent(content);
       if (!panes.export.hidden) {
         updateExportContent();
       }
+
+      // 处理状态变更
+      updateStatusBar(content);
+      autoSave(content);
     });
 
-    const pmView = new ProseMirrorView(pmTarget, defaultContent);
+    const pmView = new ProseMirrorView(pmTarget, initialContent);
+
+    // --- 功能组件逻辑 ---
+
+    // 1. 自动保存与状态栏
+    let saveTimeout = null;
+    function autoSave(content) {
+      const statusText = document.getElementById('saveStatusText');
+      const statusIcon = document.querySelector('.save-status');
+
+      statusText.innerText = '正在保存...';
+      statusIcon.classList.remove('active');
+
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => {
+        localStorage.setItem('xiaoheihe_editor_content', content);
+        statusText.innerText = '已自动保存';
+        statusIcon.classList.add('active');
+      }, 1000);
+    }
+
+    function updateStatusBar(content) {
+      const wordCount = content.replace(/[\x00-\xff]/g, "m").replace(/m+/g, "m").length;
+      // Simple approximation for CJK + English words
+      // Actual count: CJK chars + English words
+      const charCount = content.length;
+      const filteredContent = content.trim();
+      const lineCount = filteredContent ? filteredContent.split('\n').length : 0;
+
+      document.getElementById('wordCountDisplay').innerText = `字符统计: ${charCount}`;
+      document.getElementById('lineCountDisplay').innerText = `行数: ${lineCount}`;
+    }
+
+    // 初始状态更新
+    updateStatusBar(initialContent);
+
+    // 2. 清空与恢复内容
+    const clearBtn = document.getElementById('clearBtn');
+    clearBtn.addEventListener('click', () => {
+      if (confirm('确定要清空所有内容吗？此操作不可撤销。')) {
+        mdView.textarea.value = '';
+        mdView.onChange('');
+        mdView.textarea.focus();
+      }
+    });
+
+    const restoreBtn = document.getElementById('restoreBtn');
+    restoreBtn.addEventListener('click', () => {
+      if (confirm('确定要恢复为默认示例内容吗？当前已编辑的内容将被覆盖。')) {
+        mdView.textarea.value = defaultContent;
+        mdView.onChange(defaultContent);
+        mdView.textarea.focus();
+      }
+    });
+
+    // 3. 模拟手机视图 (仅限导出预览栏)
+    const mobileViewBtn = document.getElementById('mobileViewBtn');
+    const exportPane = document.getElementById('pane-export');
+    let isMobileMode = false;
+
+    mobileViewBtn.addEventListener('click', () => {
+      isMobileMode = !isMobileMode;
+      if (isMobileMode) {
+        exportPane.classList.add('mobile-mode');
+        mobileViewBtn.classList.add('active');
+        mobileViewBtn.innerText = '📱 退出模拟';
+      } else {
+        exportPane.classList.remove('mobile-mode');
+        mobileViewBtn.classList.remove('active');
+        mobileViewBtn.innerText = '📱 模拟手机';
+      }
+    });
 
     // --- 同步滚动逻辑 (Synchronized Scrolling) ---
     let isSyncingScroll = false;
