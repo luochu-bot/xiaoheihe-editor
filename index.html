@@ -547,7 +547,7 @@
     
     /* 导出编辑器容器 */
     .export-editor-container {
-      height: 60vh;
+      height: 50vh;
       border: 1px solid #e0e0e0;
       border-radius: 6px;
       overflow: hidden;
@@ -581,6 +581,79 @@
       background: #f4f4f4;
       border-style: solid;
       font-family: monospace;
+    }
+    
+    /* 导出操作区域 */
+    .export-actions {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    
+    .export-copy-btn {
+      padding: 10px 20px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    
+    .export-copy-btn:hover {
+      background: #0052a3;
+    }
+    
+    .export-copy-btn.copied {
+      background: #4caf50;
+    }
+    
+    .copy-icon {
+      font-size: 16px;
+    }
+    
+    .copy-hint {
+      font-size: 12px;
+      color: #999;
+    }
+    
+    /* 图片复制提示 */
+    .image-copy-hint {
+      margin-top: 12px;
+      padding: 12px;
+      background: #fffbeb;
+      border: 1px solid #fbbf24;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #92400e;
+      width: 100%;
+    }
+    
+    .image-copy-hint strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    
+    /* 编辑器内图片悬停效果 */
+    .export-editor-container .ProseMirror img {
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: 2px solid transparent;
+    }
+    
+    .export-editor-container .ProseMirror img:hover {
+      transform: scale(1.02);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      border-color: #0066cc;
     }
   </style>
 </head>
@@ -666,6 +739,16 @@
       </div>
       <div class="modal-body">
         <div id="export-editor" class="export-editor-container"></div>
+        <div class="export-actions">
+          <button class="export-copy-btn" id="exportCopyBtn">
+            <span class="copy-icon">📋</span> 复制内容到剪贴板
+          </button>
+          <span class="copy-hint">文字内容会自动粘贴</span>
+        </div>
+        <div class="image-copy-hint">
+          <strong>💡 图片上传说明</strong>
+          由于小黑盒编辑器限制，请<strong>点击下方图片</strong>→<strong>右键复制图片</strong>→在小黑盒编辑器中粘贴
+        </div>
       </div>
     </div>
   </div>
@@ -880,7 +963,6 @@ function hello() {
     const exportModalOverlay = document.getElementById('exportModalOverlay');
     const exportModalClose = document.getElementById('exportModalClose');
     const exportEditorTarget = document.getElementById('export-editor');
-    let exportEditorView = null;
     
     // 将代码块生成图片
     function generateCodeBlockImage(codeContent, language = '') {
@@ -1066,6 +1148,8 @@ function hello() {
       return processed;
     }
     
+    let exportEditorView = null;
+    
     // 创建导出编辑器视图（只读）
     function createExportEditor(target, content) {
       // 如果已存在，先销毁
@@ -1097,6 +1181,68 @@ function hello() {
         }
       });
       
+      // 添加图片点击事件
+      setTimeout(() => {
+        const images = target.querySelectorAll('img');
+        images.forEach(img => {
+          img.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // 创建一个临时的图片元素用于复制
+            const tempImg = document.createElement('img');
+            tempImg.src = img.src;
+            tempImg.style.cssText = `
+              position: fixed;
+              left: -9999px;
+              top: 0;
+              opacity: 0;
+            `;
+            document.body.appendChild(tempImg);
+            
+            // 选中图片
+            const range = document.createRange();
+            range.selectNode(tempImg);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            
+            // 尝试复制
+            try {
+              document.execCommand('copy');
+              
+              // 显示提示
+              const hint = document.createElement('div');
+              hint.textContent = '图片已选中，请粘贴到小黑盒编辑器';
+              hint.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                z-index: 10000;
+                pointer-events: none;
+              `;
+              document.body.appendChild(hint);
+              
+              setTimeout(() => {
+                document.body.removeChild(hint);
+              }, 2000);
+            } catch (err) {
+              console.error('复制图片失败:', err);
+            }
+            
+            // 清理
+            selection.removeAllRanges();
+            document.body.removeChild(tempImg);
+          });
+        });
+      }, 100);
+      
       return exportEditorView;
     }
     
@@ -1109,6 +1255,153 @@ function hello() {
     
     exportModalClose.addEventListener('click', () => {
       exportModalOverlay.classList.remove('active');
+    });
+    
+    // 复制到剪贴板功能
+    const exportCopyBtn = document.getElementById('exportCopyBtn');
+    
+    // 将 base64 图片转换为 Blob
+    function base64ToBlob(base64) {
+      const parts = base64.split(';base64,');
+      const contentType = parts[0].split(':')[1];
+      const raw = window.atob(parts[1]);
+      const rawLength = raw.length;
+      const uInt8Array = new Uint8Array(rawLength);
+      for (let i = 0; i < rawLength; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+      }
+      return new Blob([uInt8Array], { type: contentType });
+    }
+    
+    exportCopyBtn.addEventListener('click', async () => {
+      if (!exportEditorView) return;
+      
+      try {
+        // 获取编辑器的 DOM 内容
+        const editorDOM = exportEditorView.dom;
+        
+        // 克隆 DOM 进行处理
+        const clone = editorDOM.cloneNode(true);
+        
+        // 处理图片：将 base64 图片添加到 clipboard items
+        const images = [];
+        const imgElements = clone.querySelectorAll('img');
+        
+        imgElements.forEach((img, index) => {
+          const src = img.getAttribute('src');
+          if (src && src.startsWith('data:image')) {
+            // 为图片添加标识便于跟踪
+            img.setAttribute('data-image-id', `image-${index}`);
+            
+            // 提取 base64 并转换为 blob
+            const blob = base64ToBlob(src);
+            images.push({
+              id: `image-${index}`,
+              blob: blob,
+              type: blob.type
+            });
+          }
+        });
+        
+        // 创建 HTML 内容
+        const htmlContent = `
+          <html>
+          <body>
+            ${clone.innerHTML}
+          </body>
+          </html>
+        `;
+        
+        // 创建纯文本内容 - 从 Markdown 内容生成，移除所有图片语法
+        // 获取当前 Markdown 内容
+        let plainText = mdView.content;
+        // 移除所有 Markdown 图片语法 ![alt](url)
+        plainText = plainText.replace(/!\[.*?\]\(.*?\)/g, '');
+        // 移除 base64 图片 URL
+        plainText = plainText.replace(/!\[\s*\]\(data:image\/[^)]+\)/g, '');
+        // 清理多余的空行
+        plainText = plainText.replace(/\n\n+/g, '\n\n').trim();
+        const textBlob = new Blob([plainText], { type: 'text/plain' });
+        
+        // 构建 clipboard item data
+        const itemData = {};
+        
+        // 如果有图片，添加图片 blob 和 HTML
+        if (images.length > 0) {
+          images.forEach(img => {
+            itemData[img.type] = img.blob;
+          });
+          // 添加 HTML 格式（包含 img 标签）
+          const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+          itemData['text/html'] = htmlBlob;
+          // 添加纯文本（不包含 Markdown 图片语法）
+          itemData['text/plain'] = textBlob;
+        } else {
+          // 没有图片时，添加 HTML 和文本
+          const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+          itemData['text/html'] = htmlBlob;
+          itemData['text/plain'] = textBlob;
+        }
+        
+        // 使用 Clipboard API 写入
+        const clipboardItem = new ClipboardItem(itemData);
+        await navigator.clipboard.write([clipboardItem]);
+        
+        // 显示成功状态
+        const originalText = exportCopyBtn.innerHTML;
+        exportCopyBtn.innerHTML = '<span class="copy-icon">✓</span> 已复制';
+        exportCopyBtn.classList.add('copied');
+        
+        setTimeout(() => {
+          exportCopyBtn.innerHTML = originalText;
+          exportCopyBtn.classList.remove('copied');
+        }, 2000);
+        
+      } catch (err) {
+        console.error('复制失败:', err);
+        
+        // 降级方案：使用传统选中复制
+        try {
+          const editorDOM = exportEditorView.dom;
+          
+          // 创建隐藏容器
+          const tempContainer = document.createElement('div');
+          tempContainer.innerHTML = editorDOM.innerHTML;
+          tempContainer.style.cssText = `
+            position: fixed;
+            left: -9999px;
+            top: 0;
+            opacity: 0;
+            pointer-events: none;
+          `;
+          document.body.appendChild(tempContainer);
+          
+          // 选中并复制
+          const range = document.createRange();
+          range.selectNodeContents(tempContainer);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          const successful = document.execCommand('copy');
+          selection.removeAllRanges();
+          document.body.removeChild(tempContainer);
+          
+          if (successful) {
+            const originalText = exportCopyBtn.innerHTML;
+            exportCopyBtn.innerHTML = '<span class="copy-icon">✓</span> 已复制';
+            exportCopyBtn.classList.add('copied');
+            setTimeout(() => {
+              exportCopyBtn.innerHTML = originalText;
+              exportCopyBtn.classList.remove('copied');
+            }, 2000);
+          } else {
+            throw new Error('Fallback copy failed');
+          }
+        } catch (fallbackErr) {
+          alert('复制失败，请尝试手动选中编辑器内容后复制');
+        }
+      }
     });
     
     // 初始化
